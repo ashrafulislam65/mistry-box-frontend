@@ -1,10 +1,10 @@
 import Swal from "sweetalert2";
 
 const baseConfig = {
-  confirmButtonColor: "#d9552b",
-  cancelButtonColor: "#6b5f52",
-  background: "#fbf6ef",
-  color: "#2b231c",
+  confirmButtonColor: "#ff5722",
+  cancelButtonColor: "#6b6b6b",
+  background: "#ffffff",
+  color: "#1a1a1a",
 };
 
 export function showSuccess(title: string, text?: string) {
@@ -24,6 +24,22 @@ export function showError(title: string, text?: string) {
     icon: "error",
     title,
     text,
+    confirmButtonText: "ঠিক আছে",
+  });
+}
+
+export function showOrderSuccess(params: { name: string; packLabel: string; total: number }) {
+  return Swal.fire({
+    ...baseConfig,
+    icon: "success",
+    title: "অর্ডার সফল হয়েছে! 🎉",
+    html: `
+      <p style="margin:0 0 8px"><strong>${params.name}</strong>, আপনার অর্ডারটি গ্রহণ করা হয়েছে।</p>
+      <p style="margin:0 0 4px">প্যাক: <strong>${params.packLabel}</strong></p>
+      <p style="margin:0 0 12px">মোট: <strong>৳${params.total}</strong> (ক্যাশ অন ডেলিভারি)</p>
+      <p style="margin:0;color:#6b6b6b;font-size:14px">আমাদের টিম শীঘ্রই কল করে অর্ডার নিশ্চিত করবে।</p>
+    `,
+    confirmButtonText: "ঠিক আছে",
   });
 }
 

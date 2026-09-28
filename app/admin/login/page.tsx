@@ -38,7 +38,7 @@ export default function AdminLoginPage() {
     <div className="container">
       <form className="login-card" onSubmit={handleSubmit}>
         <span className="brand-name" style={{ marginBottom: 8 }}>
-          মিস্ত্রি বক্স Admin
+          <span className="brand-icon">📦</span>Darazz Mystery Box Admin
         </span>
 
         <div className="field">

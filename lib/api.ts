@@ -1,4 +1,4 @@
-import { ApiResponse, Category, Package, Order, OrderStatus } from "@/types";
+import { ApiResponse, Package, Order, OrderStatus, OrderStats, SiteSettings, PaginatedResponse } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
@@ -30,17 +30,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<ApiR
 
 // ---- Public ----
 
-export function getCategories() {
-  return request<Category[]>("/categories");
+export function getProduct() {
+  return request<Package>("/product");
 }
 
-export function getPackages(categorySlug?: string) {
-  const query = categorySlug ? `?category=${categorySlug}` : "";
-  return request<Package[]>(`/packages${query}`);
-}
-
-export function getPackageBySlug(slug: string) {
-  return request<Package>(`/packages/${slug}`);
+export function getSettings() {
+  return request<SiteSettings>("/settings");
 }
 
 export interface CreateOrderPayload {
@@ -90,18 +85,34 @@ export function isAdminLoggedIn(): boolean {
   return !!localStorage.getItem("mb_admin_token");
 }
 
+export function adminChangePassword(payload: { currentPassword: string; newPassword: string }) {
+  return request<null>("/admin/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 // ---- Admin orders ----
 
-export function adminGetOrders(params?: { status?: OrderStatus; from?: string; to?: string }) {
+export function adminGetOrders(params?: {
+  status?: OrderStatus;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}) {
   const search = new URLSearchParams();
   if (params?.status) search.set("status", params.status);
   if (params?.from) search.set("from", params.from);
   if (params?.to) search.set("to", params.to);
+  if (params?.page) search.set("page", String(params.page));
+  if (params?.limit) search.set("limit", String(params.limit));
   const query = search.toString();
-  return request<Order[]>(`/admin/orders${query ? `?${query}` : ""}`);
+  return request<Order[]>(`/admin/orders${query ? `?${query}` : ""}`) as Promise<PaginatedResponse<Order[]>>;
 }
+
 export function adminGetOrderStats() {
-  return request<import("@/types").OrderStats>("/admin/orders/stats");
+  return request<OrderStats>("/admin/orders/stats");
 }
 
 export function adminUpdateOrderStatus(id: string, status: OrderStatus) {
@@ -120,20 +131,13 @@ export function adminExportOrdersUrl(params?: { from?: string; to?: string; stat
   return `${API_URL}/admin/orders/export${query ? `?${query}` : ""}`;
 }
 
-// ---- Admin categories ----
+// ---- Admin product (single) ----
 
-export function adminGetCategories() {
-  return request<Category[]>("/admin/categories");
+export function adminGetProduct() {
+  return request<Package>("/admin/product");
 }
 
-// ---- Admin packages ----
-
-export function adminGetPackages() {
-  return request<Package[]>("/admin/packages");
-}
-
-export interface PackageFormPayload {
-  categoryId: string;
+export interface ProductFormPayload {
   name: string;
   slug: string;
   price: number;
@@ -146,20 +150,42 @@ export interface PackageFormPayload {
   tiers: { label: string; quantity: number; price: number }[];
 }
 
-export function adminCreatePackage(payload: PackageFormPayload) {
-  return request<Package>("/admin/packages", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export function adminUpdatePackage(id: string, payload: PackageFormPayload) {
-  return request<Package>(`/admin/packages/${id}`, {
+export function adminUpdateProduct(payload: ProductFormPayload) {
+  return request<Package>("/admin/product", {
     method: "PUT",
     body: JSON.stringify(payload),
   });
 }
 
-export function adminDeletePackage(id: string) {
-  return request(`/admin/packages/${id}`, { method: "DELETE" });
+// ---- Image upload ----
+
+export async function adminUploadImage(file: File): Promise<string> {
+  const token = getStoredToken();
+  const formData = new FormData();
+  formData.append("image", file);
+
+  const res = await fetch(`${API_URL}/admin/upload`, {
+    method: "POST",
+    credentials: "include",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.message || "Upload failed");
+  return json.data.url as string;
+}
+
+// ---- Site settings ----
+
+export function adminUpdateSettings(payload: {
+  bannerImageUrl: string | null;
+  bannerTag: string;
+  bannerTitle: string;
+  bannerSubtitle: string;
+}) {
+  return request<SiteSettings>("/admin/settings", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
 }

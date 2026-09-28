@@ -7,7 +7,8 @@ import { confirmAction } from "@/lib/alerts";
 
 const NAV_ITEMS = [
   { href: "/admin/dashboard", label: "Orders", icon: "📦" },
-  { href: "/admin/packages", label: "Packages", icon: "🧰" },
+    { href: "/admin/packages", label: "Product", icon: "🧰" },
+  { href: "/admin/settings", label: "Settings", icon: "⚙️" },
 ];
 
 export default function AdminSidebar() {
@@ -24,7 +25,7 @@ export default function AdminSidebar() {
   return (
     <aside className="admin-sidebar">
       <div className="admin-sidebar-brand">
-        <span className="brand-name">মিস্ত্রি বক্স</span>
+                <span className="brand-name"><span className="brand-icon">📦</span>Darazz Mystery Box</span>
         <span className="admin-sidebar-tag">Admin Panel</span>
       </div>
 

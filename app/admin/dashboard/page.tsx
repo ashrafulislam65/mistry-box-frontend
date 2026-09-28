@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Pagination from "@/components/Pagination";
 import {
   adminGetOrders,
   adminGetOrderStats,
@@ -60,6 +61,8 @@ export default function AdminDashboardPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -68,14 +71,17 @@ export default function AdminDashboardPage() {
         status: statusFilter || undefined,
         from: from || undefined,
         to: to || undefined,
+        page,
+        limit: 10,
       });
       setOrders(res.data || []);
+      setTotalPages(res.pagination?.totalPages || 1);
     } catch {
       router.push("/admin/login");
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, from, to, router]);
+  }, [statusFilter, from, to, page, router]);
 
   const loadStats = useCallback(async () => {
     try {
@@ -86,16 +92,23 @@ export default function AdminDashboardPage() {
     }
   }, []);
 
-  useEffect(() => {
+   useEffect(() => {
     if (!isAdminLoggedIn()) {
       router.push("/admin/login");
       return;
     }
-    loadOrders();
     loadStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!isAdminLoggedIn()) return;
+    const timer = setTimeout(() => {
+      loadOrders();
+    }, 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
   async function handleStatusChange(id: string, status: OrderStatus) {
     try {
       await adminUpdateOrderStatus(id, status);
@@ -105,6 +118,11 @@ export default function AdminDashboardPage() {
     } catch (err: unknown) {
       showError("আপডেট ব্যর্থ হয়েছে", getErrorMessage(err, "আবার চেষ্টা করুন।"));
     }
+  }
+
+  function handleFilter() {
+    setPage(1);
+    loadOrders();
   }
 
   async function handleExport() {
@@ -136,22 +154,18 @@ export default function AdminDashboardPage() {
 
   const pieData = stats
     ? Object.entries(stats.byStatus)
-        .filter(([, count]) => count > 0)
-        .map(([status, count]) => ({ name: STATUS_LABELS_BN[status] || status, value: count, status }))
+      .filter(([, count]) => count > 0)
+      .map(([status, count]) => ({ name: STATUS_LABELS_BN[status] || status, value: count, status }))
     : [];
 
-  // Growth chart: cumulative revenue over the last 7 days — ব্যবসা কতটা বাড়ছে সেটা বোঝায়
-  const growthData = (() => {
-    let running = 0;
-    return (stats?.last7Days || []).map((d) => {
-      running += d.revenue;
-      return {
-        label: new Date(d.date).toLocaleDateString("bn-BD", { day: "numeric", month: "short" }),
-        cumulativeRevenue: running,
-      };
+    const growthData = (stats?.last7Days || []).reduce<{ label: string; cumulativeRevenue: number }[]>((acc, d) => {
+    const previousTotal = acc.length > 0 ? acc[acc.length - 1].cumulativeRevenue : 0;
+    acc.push({
+      label: new Date(d.date).toLocaleDateString("bn-BD", { day: "numeric", month: "short" }),
+      cumulativeRevenue: previousTotal + d.revenue,
     });
-  })();
-
+    return acc;
+  }, []);
   return (
     <div className="admin-layout">
       <AdminSidebar />
@@ -257,7 +271,7 @@ export default function AdminDashboardPage() {
                       borderRadius: 8,
                       fontSize: 13,
                     }}
-                    formatter={(value: number) => [`৳${value}`, "মোট আয়"]}
+                    formatter={(value) => [`৳${value ?? 0}`, "মোট আয়"] as [string, string]}
                   />
                   <Line
                     type="monotone"
@@ -285,7 +299,7 @@ export default function AdminDashboardPage() {
           </select>
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-          <button className="btn btn-outline" onClick={loadOrders}>
+          <button className="btn btn-outline" onClick={handleFilter}>
             Filter
           </button>
           <button className="btn btn-accent" onClick={handleExport} disabled={exporting}>
@@ -343,6 +357,7 @@ export default function AdminDashboardPage() {
             </tbody>
           </table>
         )}
+        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
       </main>
     </div>
   );

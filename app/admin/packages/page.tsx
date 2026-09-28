@@ -1,17 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback, FormEvent } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
-  adminGetPackages,
-  adminGetCategories,
-  adminCreatePackage,
-  adminUpdatePackage,
-  adminDeletePackage,
+  adminGetProduct,
+  adminUpdateProduct,
+  adminUploadImage,
   isAdminLoggedIn,
 } from "@/lib/api";
-import { Package, Category } from "@/types";
-import { showSuccess, showError, confirmDelete } from "@/lib/alerts";
+import { showSuccess, showError } from "@/lib/alerts";
 import AdminSidebar from "@/components/AdminSidebar";
 
 function getErrorMessage(err: unknown, fallback: string): string {
@@ -25,85 +22,64 @@ interface TierForm {
   price: string;
 }
 
-const emptyForm = {
-  categoryId: "",
-  name: "",
-  slug: "",
-  price: "",
-  deliveryCharge: "99",
-  description: "",
-  items: "",
-  imageUrl: "",
-  isActive: true,
-  facebookPostUrl: "",
-};
-
 const emptyTiers: TierForm[] = [
   { label: "৬ প্যাক", quantity: "6", price: "" },
   { label: "৭ প্যাক", quantity: "7", price: "" },
   { label: "১০ প্যাক", quantity: "10", price: "" },
 ];
 
-export default function AdminPackagesPage() {
+export default function AdminProductPage() {
   const router = useRouter();
-  const [packages, setPackages] = useState<Package[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState({
+    name: "",
+    slug: "",
+    price: "",
+    deliveryCharge: "99",
+    description: "",
+    items: "",
+    imageUrl: "",
+    isActive: true,
+    facebookPostUrl: "",
+  });
   const [tiers, setTiers] = useState<TierForm[]>(emptyTiers);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [saveError, setSaveError] = useState("");
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [pkgRes, catRes] = await Promise.all([adminGetPackages(), adminGetCategories()]);
-      setPackages(pkgRes.data || []);
-      setCategories(catRes.data || []);
-    } catch {
-      router.push("/admin/login");
-    } finally {
-      setLoading(false);
-    }
-  }, [router]);
 
   useEffect(() => {
     if (!isAdminLoggedIn()) {
       router.push("/admin/login");
       return;
     }
-    loadData();
+    (async () => {
+      try {
+        const res = await adminGetProduct();
+        const pkg = res.data;
+        if (pkg) {
+          setForm({
+            name: pkg.name,
+            slug: pkg.slug,
+            price: pkg.price,
+            deliveryCharge: pkg.deliveryCharge,
+            description: pkg.description,
+            items: pkg.items.join(", "),
+            imageUrl: pkg.imageUrl || "",
+            isActive: pkg.isActive,
+            facebookPostUrl: pkg.facebookPostUrl || "",
+          });
+          if (pkg.tiers.length > 0) {
+            setTiers(pkg.tiers.map((t) => ({ label: t.label, quantity: String(t.quantity), price: t.price })));
+          }
+        }
+      } catch (err: unknown) {
+        showError("লোড ব্যর্থ হয়েছে", getErrorMessage(err, "আবার চেষ্টা করুন।"));
+      } finally {
+        setLoading(false);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  function startEdit(pkg: Package) {
-    setEditingId(pkg.id);
-    setForm({
-      categoryId: pkg.categoryId,
-      name: pkg.name,
-      slug: pkg.slug,
-      price: pkg.price,
-      deliveryCharge: pkg.deliveryCharge,
-      description: pkg.description,
-      items: pkg.items.join(", "),
-      imageUrl: pkg.imageUrl || "",
-      isActive: pkg.isActive,
-      facebookPostUrl: pkg.facebookPostUrl || "",
-    });
-    setTiers(
-      pkg.tiers.length > 0
-        ? pkg.tiers.map((t) => ({ label: t.label, quantity: String(t.quantity), price: t.price }))
-        : emptyTiers
-    );
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function resetForm() {
-    setEditingId(null);
-    setForm(emptyForm);
-    setTiers(emptyTiers);
-    setSaveError("");
-  }
 
   function updateTier(index: number, field: keyof TierForm, value: string) {
     setTiers((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)));
@@ -117,6 +93,21 @@ export default function AdminPackagesPage() {
     setTiers((prev) => prev.filter((_, i) => i !== index));
   }
 
+  async function handleImageFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const url = await adminUploadImage(file);
+      setForm((prev) => ({ ...prev, imageUrl: url }));
+      showSuccess("ছবি আপলোড হয়েছে!");
+    } catch (err: unknown) {
+      showError("আপলোড ব্যর্থ হয়েছে", getErrorMessage(err, "আবার চেষ্টা করুন।"));
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setSaveError("");
@@ -126,88 +117,64 @@ export default function AdminPackagesPage() {
       .map((t) => ({ label: t.label.trim(), quantity: Number(t.quantity), price: Number(t.price) }));
 
     if (validTiers.length === 0) {
-      setSaveError("অন্তত একটি প্যাক/tier দিতে হবে (label, quantity, price সহ)।");
+      setSaveError("অন্তত একটি প্যাক/tier দিতে হবে।");
       return;
     }
 
-    const payload = {
-      categoryId: form.categoryId,
-      name: form.name,
-      slug: form.slug,
-      price: Number(form.price),
-      deliveryCharge: Number(form.deliveryCharge),
-      description: form.description,
-      items: form.items.split(",").map((i) => i.trim()).filter(Boolean),
-      imageUrl: form.imageUrl || null,
-      isActive: form.isActive,
-      facebookPostUrl: form.facebookPostUrl || null,
-      tiers: validTiers,
-    };
-
+    setSaving(true);
     try {
-      if (editingId) {
-        await adminUpdatePackage(editingId, payload);
-        showSuccess("প্যাকেজ আপডেট হয়েছে!");
-      } else {
-        await adminCreatePackage(payload);
-        showSuccess("নতুন প্যাকেজ তৈরি হয়েছে!");
-      }
-      resetForm();
-      loadData();
+      await adminUpdateProduct({
+        name: form.name,
+        slug: form.slug,
+        price: Number(form.price),
+        deliveryCharge: Number(form.deliveryCharge),
+        description: form.description,
+        items: form.items.split(",").map((i) => i.trim()).filter(Boolean),
+        imageUrl: form.imageUrl || null,
+        isActive: form.isActive,
+        facebookPostUrl: form.facebookPostUrl || null,
+        tiers: validTiers,
+      });
+      showSuccess("প্রোডাক্ট সেভ হয়েছে!");
     } catch (err: unknown) {
       const msg = getErrorMessage(err, "সেভ করা যায়নি।");
       setSaveError(msg);
       showError("সেভ ব্যর্থ হয়েছে", msg);
+    } finally {
+      setSaving(false);
     }
   }
 
-  async function handleDelete(id: string, name: string) {
-    const confirmed = await confirmDelete(name);
-    if (!confirmed) return;
-    try {
-      await adminDeletePackage(id);
-      showSuccess("ডিলিট হয়ে গেছে!");
-      loadData();
-    } catch (err: unknown) {
-      showError("ডিলিট ব্যর্থ হয়েছে", getErrorMessage(err, "আবার চেষ্টা করুন।"));
-    }
+  if (loading) {
+    return (
+      <div className="admin-layout">
+        <AdminSidebar />
+        <main className="admin-main">
+          <p>Loading...</p>
+        </main>
+      </div>
+    );
   }
 
   return (
     <div className="admin-layout">
       <AdminSidebar />
       <main className="admin-main">
-        <h2 style={{ marginTop: 0 }}>{editingId ? "Edit Package" : "New Package"}</h2>
+        <h2 style={{ marginTop: 0 }}>Product Settings</h2>
 
         <form className="order-form" onSubmit={handleSubmit} style={{ maxWidth: 620 }}>
-          <div className="field">
-            <label>Category</label>
-            <select
-              required
-              value={form.categoryId}
-              onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
-            >
-              <option value="">Select category</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
           <div className="field">
             <label>Name</label>
             <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </div>
 
           <div className="field">
-            <label>Slug (URL-friendly, e.g. 59-taka-mistry-box)</label>
+            <label>Slug</label>
             <input required value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} />
           </div>
 
           <div className="field">
-            <label>Base Price (৳) — reference price, tier prices override this</label>
+            <label>Base Price (৳)</label>
             <input
               type="number"
               required
@@ -242,8 +209,27 @@ export default function AdminPackagesPage() {
           </div>
 
           <div className="field">
-            <label>Image URL</label>
+            <label>Image URL (অথবা নিচে থেকে ফাইল আপলোড করুন)</label>
             <input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} />
+          </div>
+
+          <div className="field">
+            <label>অথবা ফাইল আপলোড করুন</label>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleImageFileChange}
+              disabled={uploading}
+            />
+            {uploading && <p style={{ fontSize: 13, color: "var(--text-muted)" }}>আপলোড হচ্ছে...</p>}
+            {form.imageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={form.imageUrl}
+                alt="Preview"
+                style={{ marginTop: 10, width: 120, height: 90, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)" }}
+              />
+            )}
           </div>
 
           <div className="field">
@@ -262,7 +248,7 @@ export default function AdminPackagesPage() {
                 onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
                 style={{ width: "auto", marginRight: 8 }}
               />
-              Active (visible on the website)
+              Active
             </label>
           </div>
 
@@ -272,7 +258,7 @@ export default function AdminPackagesPage() {
               {tiers.map((tier, i) => (
                 <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <input
-                    placeholder="লেবেল, যেমন ৬ প্যাক"
+                    placeholder="লেবেল"
                     value={tier.label}
                     onChange={(e) => updateTier(i, "label", e.target.value)}
                     style={{ flex: 2 }}
@@ -291,12 +277,7 @@ export default function AdminPackagesPage() {
                     onChange={(e) => updateTier(i, "price", e.target.value)}
                     style={{ flex: 1 }}
                   />
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    onClick={() => removeTierRow(i)}
-                    style={{ padding: "8px 12px" }}
-                  >
+                  <button type="button" className="btn btn-outline" onClick={() => removeTierRow(i)}>
                     ✕
                   </button>
                 </div>
@@ -309,58 +290,10 @@ export default function AdminPackagesPage() {
 
           {saveError && <p className="form-msg-error">{saveError}</p>}
 
-          <div style={{ display: "flex", gap: 10 }}>
-            <button type="submit" className="btn btn-accent">
-              {editingId ? "Update" : "Create"}
-            </button>
-            {editingId && (
-              <button type="button" className="btn btn-outline" onClick={resetForm}>
-                Cancel
-              </button>
-            )}
-          </div>
+          <button type="submit" className="btn btn-accent" disabled={saving}>
+            {saving ? "সেভ হচ্ছে..." : "Save Product"}
+          </button>
         </form>
-
-        <h2 style={{ marginTop: 40 }}>All Packages</h2>
-        {loading ? (
-          <p>Loading...</p>
-        ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Category</th>
-                <th>Tiers</th>
-                <th>Delivery</th>
-                <th>Active</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {packages.map((pkg) => (
-                <tr key={pkg.id}>
-                  <td>{pkg.name}</td>
-                  <td>{pkg.category?.name}</td>
-                  <td>
-                    {pkg.tiers.length === 0
-                      ? "—"
-                      : pkg.tiers.map((t) => `${t.label} (৳${t.price})`).join(", ")}
-                  </td>
-                  <td>৳{pkg.deliveryCharge}</td>
-                  <td>{pkg.isActive ? "Yes" : "No"}</td>
-                  <td style={{ display: "flex", gap: 8 }}>
-                    <button className="btn btn-outline" onClick={() => startEdit(pkg)}>
-                      Edit
-                    </button>
-                    <button className="btn btn-outline" onClick={() => handleDelete(pkg.id, pkg.name)}>
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
       </main>
     </div>
   );

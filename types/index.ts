@@ -1,11 +1,3 @@
-export interface Category {
-  id: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  packages: Package[];
-}
-
 export interface PackageTier {
   id: string;
   packageId: string;
@@ -17,7 +9,6 @@ export interface PackageTier {
 
 export interface Package {
   id: string;
-  categoryId: string;
   name: string;
   slug: string;
   price: string;
@@ -27,7 +18,6 @@ export interface Package {
   imageUrl: string | null;
   isActive: boolean;
   facebookPostUrl: string | null;
-  category?: Category;
   tiers: PackageTier[];
 }
 
@@ -52,14 +42,34 @@ export interface Order {
   package: Package;
 }
 
-export interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  message?: string;
-}
 export interface OrderStats {
   totalOrders: number;
   totalRevenue: number;
   byStatus: Record<OrderStatus, number>;
   last7Days: { date: string; count: number; revenue: number }[];
+}
+
+export interface SiteSettings {
+  id: string;
+  bannerImageUrl: string | null;
+  bannerTag: string;
+  bannerTitle: string;
+  bannerSubtitle: string;
+}
+
+export interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface PaginatedResponse<T> extends ApiResponse<T> {
+  pagination?: Pagination;
+}
+
+export interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  message?: string;
 }
